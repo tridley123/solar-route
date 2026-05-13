@@ -1,0 +1,1519 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Solar Customer Route Map</title>
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=JetBrains+Mono:wght@300;400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css"/>
+<style>
+* { margin:0; padding:0; box-sizing:border-box; }
+:root {
+  --bg: #f5f2ec;
+  --panel: #fff;
+  --border: #e0dbd0;
+  --text: #1a1a18;
+  --muted: #888880;
+  --accent: #d4500a;
+  --solar: #e8940a;
+  --battery: #2a9e6e;
+  --solbat: #1a6db5;
+  --hwhp: #8b44b8;
+  --other: #888;
+}
+body {
+  font-family: 'Syne', sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+/* ── HEADER ── */
+header {
+  background: var(--text);
+  color: var(--bg);
+  padding: 10px 20px;
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  flex-shrink: 0;
+  border-bottom: 3px solid var(--accent);
+}
+.logo { font-size: 15px; font-weight: 800; letter-spacing: 3px; text-transform: uppercase; }
+.logo span { color: var(--accent); }
+.legend { display: flex; gap: 14px; align-items: center; margin-left: 10px; }
+.leg { display:flex; align-items:center; gap:5px; font-family:'JetBrains Mono',monospace; font-size:10px; color:#aaa; }
+.leg-dot { width:9px; height:9px; border-radius:50%; flex-shrink:0; }
+.header-right { margin-left:auto; display:flex; align-items:center; gap:10px; }
+.total-badge {
+  font-family:'JetBrains Mono',monospace;
+  font-size:11px;
+  background: rgba(255,255,255,0.1);
+  padding: 4px 10px;
+  border-radius: 20px;
+  color: #ccc;
+}
+.open-gmaps-btn {
+  background: var(--accent);
+  color: #fff;
+  border: none;
+  padding: 6px 14px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 700;
+  font-family: 'Syne', sans-serif;
+  letter-spacing: 1px;
+  cursor: pointer;
+  text-transform: uppercase;
+  transition: opacity 0.2s;
+}
+.open-gmaps-btn:hover { opacity: 0.85; }
+
+/* ── CONTROLS ── */
+.controls {
+  background: var(--panel);
+  border-bottom: 1px solid var(--border);
+  padding: 8px 20px;
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  flex-shrink: 0;
+}
+input[type=text], select {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  color: var(--text);
+  padding: 6px 12px;
+  border-radius: 4px;
+  font-size: 12px;
+  font-family: 'Syne', sans-serif;
+  outline: none;
+  cursor: pointer;
+}
+input[type=text] { width: 220px; cursor: text; }
+input[type=text]:focus, select:focus { border-color: var(--accent); }
+.count-badge {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  color: var(--muted);
+  margin-left: auto;
+}
+
+/* ── MAIN LAYOUT ── */
+.main { display:flex; flex:1; overflow:hidden; }
+
+/* ── SIDEBAR ── */
+.sidebar {
+  width: 360px;
+  background: var(--panel);
+  border-right: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  flex-shrink: 0;
+}
+.sidebar-inner {
+  overflow-y: auto;
+  flex: 1;
+  padding-bottom: 20px;
+}
+.sidebar-inner::-webkit-scrollbar { width: 4px; }
+.sidebar-inner::-webkit-scrollbar-track { background: transparent; }
+.sidebar-inner::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+/* ── ZONE HEADERS ── */
+.zone-header {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  background: var(--text);
+  color: var(--bg);
+  padding: 8px 16px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  cursor: pointer;
+  user-select: none;
+}
+.zone-header:hover { background: #2a2a28; }
+.zone-num {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 10px;
+  font-weight: 500;
+  color: var(--accent);
+  width: 22px;
+  flex-shrink: 0;
+}
+.zone-name { font-size: 12px; font-weight: 700; letter-spacing: 2px; text-transform: uppercase; flex: 1; }
+.zone-count {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 10px;
+  color: #888;
+}
+.zone-chevron { font-size: 10px; color: #666; transition: transform 0.2s; }
+.zone-header.collapsed .zone-chevron { transform: rotate(-90deg); }
+
+/* ── CUSTOMER ITEMS ── */
+.customer-item {
+  padding: 9px 16px 9px 44px;
+  border-bottom: 1px solid var(--border);
+  cursor: pointer;
+  transition: background 0.12s;
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  position: relative;
+}
+.customer-item:hover { background: #f9f6f0; }
+.customer-item.active { background: #fff5ee; }
+.customer-item.active::before {
+  content: '';
+  position: absolute;
+  left: 0; top: 0; bottom: 0;
+  width: 3px;
+  background: var(--accent);
+}
+.stop-num {
+  position: absolute;
+  left: 16px;
+  top: 11px;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 9px;
+  color: var(--muted);
+  width: 18px;
+  text-align: right;
+}
+.type-pip {
+  width: 7px; height: 7px;
+  border-radius: 50%;
+  margin-top: 5px;
+  flex-shrink: 0;
+}
+.c-name { font-size: 13px; font-weight: 600; color: var(--text); line-height: 1.3; }
+.c-addr { font-size: 11px; color: var(--muted); margin-top: 1px; font-family: 'JetBrains Mono', monospace; }
+.c-type {
+  font-size: 10px;
+  font-family: 'JetBrains Mono', monospace;
+  margin-top: 2px;
+  font-weight: 500;
+}
+
+/* ── MAP ── */
+#map { flex:1; position:relative; }
+#map iframe { width:100%; height:100%; border:none; }
+
+.map-overlay {
+  position: absolute;
+  bottom: 20px;
+  right: 20px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 12px 16px;
+  box-shadow: 0 4px 20px rgba(0,0,0,0.12);
+  font-size: 12px;
+  max-width: 220px;
+  z-index: 10;
+}
+.map-overlay-title { font-weight: 700; font-size: 11px; letter-spacing: 1px; text-transform: uppercase; color: var(--muted); margin-bottom: 6px; }
+.map-overlay-name { font-weight: 700; font-size: 14px; color: var(--text); margin-bottom: 3px; }
+.map-overlay-addr { font-size: 11px; color: var(--muted); font-family: 'JetBrains Mono', monospace; margin-bottom: 5px; }
+.map-overlay-type { font-size: 11px; font-weight: 600; }
+.map-overlay-nav {
+  margin-top: 8px;
+  display: flex;
+  gap: 6px;
+}
+.nav-btn {
+  flex: 1;
+  padding: 5px 0;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--bg);
+  font-size: 10px;
+  font-weight: 700;
+  font-family: 'Syne', sans-serif;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: all 0.15s;
+  color: var(--text);
+}
+.nav-btn:hover { background: var(--text); color: var(--bg); }
+.nav-btn.primary { background: var(--accent); color: #fff; border-color: var(--accent); }
+.nav-btn.primary:hover { opacity: 0.85; }
+
+.zone-hidden { display: none; }
+
+/* ── LEAFLET CUSTOMISATION ── */
+.leaflet-tooltip-custom {
+  font-family: 'Syne', sans-serif;
+  font-size: 12px;
+  border-radius: 6px;
+  border: 1px solid #e0dbd0;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+  padding: 6px 10px;
+  pointer-events: none;
+}
+.leaflet-container {
+  font-family: 'Syne', sans-serif;
+}
+.leaflet-control-attribution {
+  font-size: 9px !important;
+}
+
+/* ── VISITED STATE ── */
+.customer-item.visited {
+  background: #f0faf5 !important;
+  opacity: 0.65;
+}
+.customer-item.visited .c-name {
+  text-decoration: line-through;
+  color: var(--muted);
+}
+.customer-item.visited .stop-num::before {
+  content: '✓';
+  color: #2a9e6e;
+  font-weight: 700;
+}
+.customer-item.visited .stop-num {
+  color: transparent;
+  font-size: 0;
+}
+.customer-item.visited .type-pip {
+  background: #2a9e6e !important;
+}
+
+/* ── TICK BUTTON ── */
+.tick-btn {
+  position: absolute;
+  right: 10px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  border: 2px solid var(--border);
+  background: var(--bg);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  color: transparent;
+  transition: all 0.15s;
+  flex-shrink: 0;
+  z-index: 2;
+}
+.tick-btn:hover {
+  border-color: #2a9e6e;
+  background: #f0faf5;
+  color: #2a9e6e;
+}
+.customer-item.visited .tick-btn {
+  background: #2a9e6e;
+  border-color: #2a9e6e;
+  color: #fff;
+}
+
+/* ── ZONE PROGRESS BAR ── */
+.zone-progress {
+  height: 3px;
+  background: rgba(255,255,255,0.15);
+  position: relative;
+  overflow: hidden;
+}
+.zone-progress-bar {
+  height: 100%;
+  background: #2a9e6e;
+  transition: width 0.3s ease;
+}
+.zone-done-count {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 9px;
+  color: #2a9e6e;
+  margin-right: 6px;
+}
+
+/* ── PROGRESS SUMMARY BAR ── */
+.progress-bar-wrap {
+  background: var(--panel);
+  border-bottom: 1px solid var(--border);
+  padding: 6px 20px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-shrink: 0;
+}
+.progress-track {
+  flex: 1;
+  height: 6px;
+  background: var(--border);
+  border-radius: 3px;
+  overflow: hidden;
+}
+.progress-fill {
+  height: 100%;
+  background: #2a9e6e;
+  border-radius: 3px;
+  transition: width 0.3s ease;
+}
+.progress-label {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  color: var(--muted);
+  white-space: nowrap;
+}
+.reset-btn {
+  font-size: 10px;
+  font-family: 'Syne', sans-serif;
+  font-weight: 700;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  background: none;
+  border: 1px solid var(--border);
+  color: var(--muted);
+  padding: 3px 8px;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.reset-btn:hover { border-color: #c0392b; color: #c0392b; }
+
+/* overlay check button */
+.check-visit-btn {
+  width: 100%;
+  margin-top: 8px;
+  padding: 7px 0;
+  border-radius: 4px;
+  border: 2px solid #2a9e6e;
+  background: transparent;
+  color: #2a9e6e;
+  font-size: 11px;
+  font-weight: 700;
+  font-family: 'Syne', sans-serif;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.check-visit-btn:hover, .check-visit-btn.done {
+  background: #2a9e6e;
+  color: #fff;
+}
+
+/* ── ZONE DROPDOWN ── */
+.zone-dropdown-wrap {
+  position: relative;
+  display: inline-block;
+}
+.zone-dropdown-btn {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  color: var(--text);
+  padding: 6px 28px 6px 12px;
+  border-radius: 4px;
+  font-size: 12px;
+  font-family: 'Syne', sans-serif;
+  font-weight: 600;
+  cursor: pointer;
+  outline: none;
+  white-space: nowrap;
+  min-width: 160px;
+  text-align: left;
+  position: relative;
+  transition: border-color 0.15s;
+}
+.zone-dropdown-btn::after {
+  content: '▼';
+  font-size: 9px;
+  position: absolute;
+  right: 10px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--muted);
+}
+.zone-dropdown-btn:focus, .zone-dropdown-btn.open { border-color: var(--accent); }
+
+.zone-dropdown-panel {
+  display: none;
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  z-index: 999;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  box-shadow: 0 6px 24px rgba(0,0,0,0.12);
+  min-width: 240px;
+  max-height: 380px;
+  overflow-y: auto;
+  padding: 6px 0;
+}
+.zone-dropdown-panel.open { display: block; }
+.zone-dropdown-panel::-webkit-scrollbar { width: 4px; }
+.zone-dropdown-panel::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+.zdd-actions {
+  display: flex;
+  gap: 6px;
+  padding: 6px 12px 8px;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 4px;
+}
+.zdd-action-btn {
+  font-size: 10px;
+  font-family: 'Syne', sans-serif;
+  font-weight: 700;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  background: none;
+  border: 1px solid var(--border);
+  color: var(--muted);
+  padding: 3px 8px;
+  border-radius: 3px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.zdd-action-btn:hover { border-color: var(--accent); color: var(--accent); }
+
+.zone-dd-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 14px;
+  cursor: pointer;
+  transition: background 0.1s;
+  user-select: none;
+}
+.zone-dd-item:hover { background: #f5f2ec; }
+.zone-dd-check {
+  width: 16px; height: 16px;
+  border: 2px solid var(--border);
+  border-radius: 3px;
+  display: flex; align-items: center; justify-content: center;
+  flex-shrink: 0;
+  font-size: 10px;
+  color: #fff;
+  transition: all 0.12s;
+}
+.zone-dd-check.checked { border-color: var(--accent); background: var(--accent); }
+.zone-dd-swatch {
+  width: 10px; height: 10px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.zone-dd-label {
+  font-size: 12px;
+  font-weight: 600;
+  flex: 1;
+}
+.zone-dd-count {
+  font-size: 10px;
+  font-family: 'JetBrains Mono', monospace;
+  color: var(--muted);
+}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo">☀ Solar <span>Route</span></div>
+  <div class="legend">
+    <div class="leg"><div class="leg-dot" style="background:#e8940a"></div>Solar</div>
+    <div class="leg"><div class="leg-dot" style="background:#2a9e6e"></div>Battery</div>
+    <div class="leg"><div class="leg-dot" style="background:#1a6db5"></div>Solar+Battery</div>
+    <div class="leg"><div class="leg-dot" style="background:#8b44b8"></div>HWHP/Other</div>
+  </div>
+  <div class="header-right">
+    <span id="syncStatus" style="font-family:'JetBrains Mono',monospace;font-size:11px;color:#2a9e6e;">⟳ Connecting…</span>
+    <span class="total-badge" id="totalBadge">— stops</span>
+    <button class="open-gmaps-btn" onclick="openFullRoute()">Open Route in Maps</button>
+  </div>
+</header>
+
+<div class="controls">
+  <input type="text" id="searchInput" placeholder="Search name or address…" oninput="filterAll()">
+  <select id="typeFilter" onchange="filterAll()">
+    <option value="">All types</option>
+    <option value="solar">Solar</option>
+    <option value="battery">Battery</option>
+    <option value="hwhp">HWHP</option>
+    <option value="top-up">Top-up</option>
+  </select>
+
+  <!-- Zone multi-select dropdown -->
+  <div class="zone-dropdown-wrap" id="zoneDropdownWrap">
+    <button class="zone-dropdown-btn" id="zoneDropdownBtn" onclick="toggleZoneDropdown()">All Zones</button>
+    <div class="zone-dropdown-panel" id="zoneDropdownPanel">
+      <div class="zdd-actions">
+        <button class="zdd-action-btn" onclick="selectAllZones()">All</button>
+        <button class="zdd-action-btn" onclick="selectNoZones()">None</button>
+      </div>
+      <div id="zoneCheckList"></div>
+    </div>
+  </div>
+
+  <span class="count-badge" id="countBadge"></span>
+</div>
+
+<div class="progress-bar-wrap">
+  <span class="progress-label" id="progressLabel">0 / 0 visited</span>
+  <div class="progress-track"><div class="progress-fill" id="progressFill" style="width:0%"></div></div>
+  <button class="reset-btn" onclick="resetAll()">Reset All</button>
+</div>
+
+<div class="main">
+  <div class="sidebar">
+    <div class="sidebar-inner" id="sidebarInner"></div>
+  </div>
+  <div id="map">
+    <div id="leaflet-map" style="width:100%;height:100%;"></div>
+    <div class="map-overlay" id="mapOverlay" style="display:none">
+      <div class="map-overlay-title">Selected Stop</div>
+      <div class="map-overlay-name" id="ovName"></div>
+      <div class="map-overlay-addr" id="ovAddr"></div>
+      <div class="map-overlay-type" id="ovType"></div>
+      <div class="map-overlay-nav">
+        <button class="nav-btn" onclick="navigateStop(-1)">◀ Prev</button>
+        <button class="nav-btn primary" onclick="openInMaps()">Navigate</button>
+        <button class="nav-btn" onclick="navigateStop(1)">Next ▶</button>
+      </div>
+      <button class="check-visit-btn" id="ovCheckBtn" onclick="toggleVisitedFromOverlay()">✓ Mark as Visited</button>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script>
+const zones = [
+  {
+    id: 1,
+    name: "Wingham",
+    color: "#c0392b",
+    customers: [
+      {name:"Scott Barry", address:"58 Killawarra St, Wingham NSW 2429", type:"Solar", lat:-31.86, lng:152.3685},
+      {name:"Dee & Roben Annear", address:"41 Killawarra St, Wingham NSW 2429", type:"Solar", lat:-31.8607195, lng:152.3685152},
+      {name:"Mark Smith", address:"35 Appletree St, Wingham NSW 2429", type:"Solar", lat:-31.8646417, lng:152.385618},
+      {name:"Sharon Ledger", address:"12 Appletree St, Wingham NSW 2429", type:"Solar", lat:-31.8666579, lng:152.3820765},
+      {name:"Blake Ballard", address:"5A Sunset Ave, Wingham NSW 2429", type:"Battery", lat:-31.8627841, lng:152.3608965},
+      {name:"Kim (Alfred) Giles", address:"26 Sunset Ave, Wingham NSW 2429", type:"Solar", lat:-31.8629103, lng:152.3580819},
+      {name:"Jenny Draper", address:"18 Mountview Ave, Wingham NSW 2429", type:"Battery", lat:-31.8649785, lng:152.3526733},
+      {name:"Samantha McKeough", address:"12 Mountview Ave, Wingham NSW 2429", type:"Solar", lat:-31.8649329, lng:152.3520843},
+      {name:"Sue-Ellen Bartz", address:"36 Queen St, Wingham NSW 2429", type:"Battery", lat:-31.8653034, lng:152.36978},
+      {name:"Kris Smith", address:"80 Queen St, Wingham NSW 2429", type:"Battery", lat:-31.8602958, lng:152.3705649},
+      {name:"Bradley Witchard", address:"88 Queen St, Wingham NSW 2429", type:"Solar", lat:-31.8593004, lng:152.3706613},
+      {name:"Beverley Spencer", address:"32 Queen St, Wingham NSW 2429", type:"Solar", lat:-31.865656, lng:152.3697506},
+      {name:"Ashley Spencer", address:"32 Queen St, Wingham NSW 2429", type:"Battery", lat:-31.865656, lng:152.3697506},
+      {name:"Andrew Watson", address:"17 Queen St, Wingham NSW 2429", type:"Top-up & Battery", lat:-31.8712116, lng:152.3692768},
+      {name:"Michael Newling", address:"38 Moon St, Wingham NSW 2429", type:"Solar", lat:-31.8703814, lng:152.3662943},
+      {name:"Brandon Brown", address:"12 Moon St, Wingham NSW 2429", type:"Solar", lat:-31.8757107, lng:152.3651548},
+      {name:"Simon Crowe", address:"29 Moon St, Wingham NSW 2429", type:"Solar", lat:-31.8739404, lng:152.3661045},
+      {name:"Stephen Crouch", address:"17 Hunter Place, Wingham NSW 2429", type:"Battery", lat:-31.8593639, lng:152.3606056},
+      {name:"Jeb Smith", address:"19 Hunter Place, Wingham NSW 2429", type:"Solar", lat:-31.8595613, lng:152.3608583},
+      {name:"Jannelle Lane", address:"56 Marlee St, Wingham NSW 2429", type:"Battery", lat:-31.8595223, lng:152.3695144},
+      {name:"Daniel Brace", address:"12 Marlee St, Wingham NSW 2429", type:"Top-up & Battery", lat:-31.8645614, lng:152.3685231},
+      {name:"Peppa Eden-Shiomi", address:"68 Marlee St, Wingham NSW 2429", type:"Solar & Battery", lat:-31.8595005, lng:152.3704331},
+      {name:"Alan Ney", address:"43 Murray Rd, Wingham NSW 2429", type:"Solar", lat:-31.8676156, lng:152.3596715},
+      {name:"Rodney & Candy Reeve", address:"38 Murray Rd, Wingham NSW 2429", type:"Solar", lat:-31.8681274, lng:152.3600869},
+      {name:"Russell Pattison", address:"38 Murray Rd, Wingham NSW 2429", type:"Solar & Battery", lat:-31.8681274, lng:152.3600869},
+      {name:"Leah Crawford", address:"78 Murray Rd, Wingham NSW 2429", type:"Solar", lat:-31.8645795, lng:152.3495764},
+      {name:"Ron & Margaret Bayliss", address:"14 Tyrone St, Wingham NSW 2429", type:"Solar", lat:-31.8690178, lng:152.3595426},
+      {name:"Vicky Wills", address:"7 Ellenora Circuit, Wingham NSW 2429", type:"Battery", lat:-31.8636982, lng:152.3572199},
+      {name:"Anne Anlezark", address:"22 Treetops Parade, Wingham NSW 2429", type:"Solar", lat:-31.8657235, lng:152.3574505},
+      {name:"Tarnie Van Vliet", address:"15 Mortimer St, Wingham NSW 2429", type:"Solar", lat:-31.8647687, lng:152.3638499},
+      {name:"Stephen Pemberton", address:"37 Farquhar St, Wingham NSW 2429", type:"Solar & Battery", lat:-31.8696794, lng:152.3701199},
+      {name:"Dan Clemmensen", address:"54 Farquhar St, Wingham NSW 2429", type:"Solar & Battery", lat:-31.869965, lng:152.3684772},
+      {name:"Anne Roberts", address:"24 Campbell St, Wingham NSW 2429", type:"Solar & Battery", lat:-31.8682875, lng:152.3586639},
+      {name:"Frances Clark", address:"32 Summerville St, Wingham NSW 2429", type:"Solar", lat:-31.875747, lng:152.3562179},
+      {name:"Michelle Betts", address:"8 Summerville St, Wingham NSW 2429", type:"Battery", lat:-31.875884, lng:152.3589485},
+      {name:"John Harris", address:"10 Adelaide Close, Wingham NSW 2429", type:"Battery", lat:-31.8797958, lng:152.357165},
+      {name:"Gary Draper", address:"10 Rouse St, Wingham NSW 2429", type:"Solar", lat:-31.8776785, lng:152.3578707},
+      {name:"Robyn Armstrong", address:"6-8 Rouse St, Wingham NSW 2429", type:"Solar", lat:-31.8779241, lng:152.357368},
+      {name:"Charles Cavanagh", address:"2 Wyoming St, Wingham NSW 2429", type:"Solar", lat:-31.8649934, lng:152.3654344},
+      {name:"Brett Stilwell", address:"4 Phillip Close, Wingham NSW 2429", type:"Solar", lat:-31.858233, lng:152.3376141},
+      {name:"Brett Miranda", address:"15 William St, Wingham NSW 2429", type:"Solar", lat:-31.8723617, lng:152.367935},
+      {name:"Juan Gallardo", address:"1044 Wingham Rd, Wingham NSW 2429", type:"Solar", lat:-31.8625772, lng:152.379894},
+      {name:"Deidre Kliendienst", address:"7 Stringybark Close, Wingham NSW 2429", type:"Solar & Battery", lat:-31.8665727, lng:152.3601325},
+      {name:"Barbara Walker", address:"88 Bungay Rd, Wingham NSW 2429", type:"Solar", lat:-31.8785335, lng:152.3573244},
+      {name:"Annette Barrett", address:"15 Bungay Rd, Wingham NSW 2429", type:"Battery", lat:-31.873484, lng:152.3697646},
+      {name:"Peter Foxe", address:"15 Warrawillah Ave, Wingham NSW 2429", type:"Solar", lat:-31.8771645, lng:152.3578133},
+      {name:"Amanda Hill", address:"7 Jacaranda Ave, Wingham NSW 2429", type:"Solar", lat:-31.8782595, lng:152.3557964},
+      {name:"David Darby", address:"4 Kundibakh Close, Wingham NSW 2429", type:"Battery", lat:-31.8770871, lng:152.3581297},
+      {name:"Judith Pettett", address:"1339 Gloucester Rd, Wingham NSW 2429", type:"Battery", lat:-31.8712823, lng:152.3658845},
+      {name:"James Dean", address:"1314 Gloucester Rd, Wingham NSW 2429", type:"Battery", lat:-31.8737842, lng:152.363971},
+      {name:"Margaret Overall", address:"21 Riverview Drive, Wingham NSW 2429", type:"Battery", lat:-31.8818562, lng:152.3640338},
+      {name:"Darren & Kylie Heathcote", address:"1 West St, Wingham NSW 2429", type:"Solar", lat:-31.8778115, lng:152.3528686},
+      {name:"Debra Lee Crane", address:"76 Richardson St, Wingham NSW 2429", type:"Solar", lat:-31.8633805, lng:152.361844},
+      {name:"Nathan Aylett", address:"1 The Bunker, Wingham NSW 2429", type:"Solar", lat:-31.8703184, lng:152.3566508},
+      {name:"Jacqueline Latimore", address:"27 Flett St, Wingham NSW 2429", type:"Solar", lat:-31.8630403, lng:152.3671533},
+      {name:"Brock Latimore", address:"33 Flett St, Wingham NSW 2429", type:"Solar", lat:-31.8626917, lng:152.3641631},
+      {name:"Zach Longhurst", address:"39 Flett St, Wingham NSW 2429", type:"Solar", lat:-31.8625319, lng:152.3632278},
+      {name:"Ryan McIntosh", address:"8 East Combined St, Wingham NSW 2429", type:"Solar", lat:-31.8687906, lng:152.3861411},
+      {name:"Rebecca Bird", address:"28A Bungay Rd, Wingham NSW 2429", type:"Solar", lat:-31.876533, lng:152.3674907},
+      {name:"Kevin Ballard", address:"77 Dollys Flat Rd, Wingham NSW 2429", type:"Solar", lat:-31.8780795, lng:152.3238049},
+      {name:"Sarah Maughan", address:"25 Stockyard Circuit, Wingham NSW 2429", type:"Solar", lat:-31.8654249, lng:152.3584841}
+    ]
+  },
+  {
+    id: 2,
+    name: "Krambach / Nabiac",
+    color: "#8e44ad",
+    customers: [
+      {name:"Renae Durbin", address:"77 Kings Creek Rd, Krambach NSW 2429", type:"Solar", lat:-32.03878, lng:152.2831522},
+      {name:"Nicholas Reid", address:"80 James Cowan Rd, Krambach NSW 2429", type:"Solar & Battery", lat:-32.0696866, lng:152.2559456},
+      {name:"Robert Allan", address:"788 Kimbriki Rd, Kimbriki NSW 2429", type:"Solar", lat:-31.9022985, lng:152.2553899},
+      {name:"Sandra Phillips", address:"2 Abbott St, Nabiac NSW 2312", type:"Solar", lat:-32.093552, lng:152.3907187},
+      {name:"Camilla Watkins", address:"37 Clarkson St, Nabiac NSW 2312", type:"Solar", lat:-32.0957636, lng:152.3830817},
+      {name:"Anthony Goodrich", address:"72 Nabiac St, Nabiac NSW 2312", type:"Solar", lat:-32.1021612, lng:152.3873286},
+      {name:"Ruth Ryder", address:"27 Nabiac St, Nabiac NSW 2312", type:"Solar & Battery", lat:-32.0992114, lng:152.3803565},
+      {name:"Ianthe Freeman", address:"23 Farnell St, Nabiac NSW 2312", type:"Battery", lat:-32.0975444, lng:152.385176},
+      {name:"Kurt Wade", address:"9 Farnell St, Nabiac NSW 2312", type:"Battery", lat:-32.0983066, lng:152.3839536},
+      {name:"Dannielle Dark", address:"34 Hosking St, Nabiac NSW 2312", type:"Solar", lat:-32.0986521, lng:152.3778277},
+      {name:"Tye Dark", address:"34 Hoskins St, Nabiac NSW 2312", type:"Battery & HWHP & HVAC", lat:-32.1017551, lng:152.3866776},
+      {name:"Kaye Walker", address:"4 Woosters Lane, Nabiac NSW 2312", type:"Solar & Battery", lat:-32.0913236, lng:152.3918959}
+    ]
+  },
+  {
+    id: 3,
+    name: "Wherrol Flat / Burrell Creek / Comboyne",
+    color: "#16a085",
+    customers: [
+      {name:"Paul Latimore", address:"166 Little Run Rd, Wherrol Flat NSW 2429", type:"Solar", lat:-31.7831024, lng:152.2137767},
+      {name:"Eleanor Day", address:"9 Wynters Rd, Burrell Creek NSW 2429", type:"Battery", lat:-31.9534382, lng:152.3037919},
+      {name:"Kerry Finnegan", address:"10 River St, Comboyne NSW 2429", type:"Solar", lat:-31.6053724, lng:152.4661807}
+    ]
+  },
+  {
+    id: 4,
+    name: "Upper Lansdowne / Lansdowne / Croki",
+    color: "#d35400",
+    customers: [
+      {name:"Peter Armitage", address:"657 Yarratt Rd, Upper Lansdowne NSW 2430", type:"Battery", lat:-31.761889, lng:152.4531109},
+      {name:"John Newman", address:"32 Croki St, Lansdowne NSW 2430", type:"Battery", lat:-31.7827998, lng:152.5361478},
+      {name:"Kylie Harris", address:"71 Barton St, Croki NSW 2430", type:"Battery", lat:-31.8756318, lng:152.5941094}
+    ]
+  },
+  {
+    id: 5,
+    name: "Tinonee",
+    color: "#2980b9",
+    customers: [
+      {name:"Kenneth Loftus", address:"313 Bull Hill Rd, Tinonee NSW 2430", type:"Solar", lat:-31.965619, lng:152.3984891},
+      {name:"Evan Downie", address:"34 Washington St, Tinonee NSW 2430", type:"Solar", lat:-31.9396076, lng:152.4155772},
+      {name:"Tara Russell", address:"1 Burdett St, Tinonee NSW 2430", type:"Solar", lat:-31.9388707, lng:152.4088797},
+      {name:"Peter Dibley", address:"17 Winter St, Tinonee NSW 2430", type:"Solar & Battery", lat:-31.93548, lng:152.4151647},
+      {name:"Cherie Cross", address:"3 Carmichael Lane, Tinonee NSW 2430", type:"Solar", lat:-31.9386448, lng:152.4117896},
+      {name:"Jacqueline Keith", address:"5 Tata Place, Tinonee NSW 2430", type:"Solar", lat:-31.9387771, lng:152.4171732},
+      {name:"Clint Matthews", address:"8 Tata Place, Tinonee NSW 2430", type:"Battery", lat:-31.9390085, lng:152.4167151},
+      {name:"Stephen McGann", address:"5 Webster Close, Tinonee NSW 2430", type:"Battery", lat:-31.9371839, lng:152.4081906},
+      {name:"Bruce Campbell", address:"7 Manchester St, Tinonee NSW 2430", type:"Solar & Battery", lat:-31.9344501, lng:152.4148065},
+      {name:"Leo Genereux", address:"9 Manchester St, Tinonee NSW 2430", type:"Battery", lat:-31.9345935, lng:152.4147157},
+      {name:"Terry Sullivan", address:"29 Manchester St, Tinonee NSW 2430", type:"Battery", lat:-31.9367537, lng:152.4143572},
+      {name:"Gloria Baker", address:"17 Caparra Close, Tinonee NSW 2430", type:"Top-up & Battery", lat:-31.9398281, lng:152.4172451}
+    ]
+  },
+  {
+    id: 6,
+    name: "Kundle Kundle / Cundletown",
+    color: "#f39c12",
+    customers: [
+      {name:"Marian Hunt", address:"216 Kundle Kundle Rd, Kundle Kundle NSW 2430", type:"Solar", lat:-31.8549288, lng:152.5306855},
+      {name:"Paul Drury", address:"400 Kundle Kundle Rd, Kundle Kundle NSW 2430", type:"Solar", lat:-31.8575022, lng:152.5499206},
+      {name:"Matthew Ferris", address:"12 Farmview Drive, Cundletown NSW 2430", type:"Solar", lat:-31.8651598, lng:152.5114479},
+      {name:"Kenneth Law", address:"21 Arkana Ave, Cundletown NSW 2430", type:"Solar", lat:-31.8973113, lng:152.5266933},
+      {name:"Sharon Donovan", address:"6 Arkana Ave, Cundletown NSW 2430", type:"Battery", lat:-31.8978229, lng:152.5261051},
+      {name:"Abigail Gourgon", address:"11 High St, Cundletown NSW 2430", type:"Solar", lat:-31.8944546, lng:152.515016},
+      {name:"Coleen Rosa", address:"14 High St, Cundletown NSW 2430", type:"Solar", lat:-31.8947617, lng:152.5146589},
+      {name:"David Golledge", address:"4A King St, Cundletown NSW 2430", type:"Solar", lat:-31.8964087, lng:152.5157809},
+      {name:"Patricia Wright", address:"35 High St, Cundletown NSW 2430", type:"Solar", lat:-31.8960344, lng:152.516958},
+      {name:"Mark Shevill", address:"56 High St, Cundletown NSW 2430", type:"Solar & Battery", lat:-31.8992443, lng:152.5201279},
+      {name:"Valerie Batman-Harker", address:"72 Main St, Cundletown NSW 2430", type:"Solar & Battery", lat:-31.900177, lng:152.5192419},
+      {name:"Adam Ryan", address:"13 Denison St, Cundletown NSW 2430", type:"Solar & Battery", lat:-31.89823, lng:152.5245836},
+      {name:"Ricky Batger", address:"1 Denison St, Cundletown NSW 2430", type:"Solar", lat:-31.8989301, lng:152.5254654},
+      {name:"Barry Wood", address:"74 Princes St, Cundletown NSW 2430", type:"Battery", lat:-31.89949, lng:152.5272736},
+      {name:"Lynette Mayo", address:"84 Princes St, Cundletown NSW 2430", type:"Solar", lat:-31.898904, lng:152.5279674},
+      {name:"Brodie Christie", address:"35 Park Ave, Cundletown NSW 2430", type:"Solar", lat:-31.8986906, lng:152.5246292},
+      {name:"Danny Christie", address:"93 River St, Cundletown NSW 2430", type:"Solar", lat:-31.9026399, lng:152.5214704},
+      {name:"Nathan Currie", address:"13 Princes St, Cundletown NSW 2430", type:"Solar & Battery", lat:-31.9031973, lng:152.5223029}
+    ]
+  },
+  {
+    id: 7,
+    name: "Taree",
+    color: "#27ae60",
+    customers: [
+      {name:"Nathaniel Hanslow", address:"67 Potoroo Drive, Taree NSW 2430", type:"Solar", lat:-31.8809187, lng:152.4323335},
+      {name:"Valma Nagle", address:"67 Potoroo Drive, Taree NSW 2430", type:"Battery", lat:-31.8809187, lng:152.4323335},
+      {name:"Fay Mellan", address:"8 Honeysuckle Close, Taree NSW 2430", type:"Solar", lat:-31.894493, lng:152.4837319},
+      {name:"Natalie Jobson", address:"5 Lakkari Close, Taree NSW 2430", type:"Solar", lat:-31.8867177, lng:152.4730055},
+      {name:"Allison Alliston", address:"5 Willow Close, Taree NSW 2430", type:"Solar & Battery", lat:-31.8937045, lng:152.4802293},
+      {name:"Amanda Mcinally", address:"9 Wootton Crescent, Taree NSW 2430", type:"HWHP", lat:-31.9006261, lng:152.4439071},
+      {name:"Amanda Sproul", address:"9 Wootton Crescent, Taree NSW 2430", type:"HWHP", lat:-31.9006261, lng:152.4439071},
+      {name:"Nadine Sams", address:"22 Wootton Crescent, Taree NSW 2430", type:"Battery", lat:-31.9009937, lng:152.4432566},
+      {name:"David Sams", address:"22 Wootton Crescent, Taree NSW 2430", type:"Battery", lat:-31.9009937, lng:152.4432566},
+      {name:"Kenneth Eldridge", address:"31 Dugdale Avenue, Taree NSW 2430", type:"Solar", lat:-31.9002758, lng:152.4452315},
+      {name:"Catherine Mauger", address:"33 Dugdale Avenue, Taree NSW 2430", type:"Battery", lat:-31.9004391, lng:152.4453046},
+      {name:"Kirsty Scott", address:"10 Ann St, Taree NSW 2430", type:"Solar", lat:-31.8967831, lng:152.4654196},
+      {name:"Janet Wall", address:"35 Tristania Crescent, Taree NSW 2430", type:"Solar", lat:-31.9124715, lng:152.4402738},
+      {name:"Kylie Parvin", address:"11 Samantha Close, Taree NSW 2430", type:"Solar", lat:-31.9183617, lng:152.4363441},
+      {name:"John & Evelyn Gates", address:"22 Allumba Close, Taree NSW 2430", type:"Solar", lat:-31.8878485, lng:152.4709862},
+      {name:"Girlie Webber", address:"7 Pioneer St, Taree NSW 2430", type:"Solar & Battery", lat:-31.9021017, lng:152.4813207},
+      {name:"Sarah Gordon", address:"7 Ronald Rd, Taree NSW 2430", type:"Solar", lat:-31.8976209, lng:152.4653539},
+      {name:"Franco Rampano", address:"179 High St, Taree NSW 2430", type:"Solar", lat:-31.9121451, lng:152.4463349},
+      {name:"Maree Parnell", address:"150 High St, Taree NSW 2430", type:"Solar", lat:-31.9121627, lng:152.4493286},
+      {name:"Janita Williams", address:"118 High St, Taree NSW 2430", type:"Top-up & Battery", lat:-31.9115665, lng:152.4531069},
+      {name:"Ian Carr", address:"324 Victoria St, Taree NSW 2430", type:"Solar", lat:-31.9174118, lng:152.4507034},
+      {name:"Glen Bowman", address:"318 Victoria St, Taree NSW 2430", type:"Solar", lat:-31.9173287, lng:152.451386},
+      {name:"Melanie Russell", address:"320 Victoria St, Taree NSW 2430", type:"Solar & Battery", lat:-31.9173604, lng:152.4511461},
+      {name:"Peter Rich", address:"25 Lawson Crescent, Taree NSW 2430", type:"Top-up & Battery", lat:-31.8925309, lng:152.4763968},
+      {name:"Zachary Allen", address:"122 Kanangra Drive, Taree NSW 2430", type:"Solar", lat:-31.8860948, lng:152.4684794},
+      {name:"Neil Barwick", address:"114 Kanangra Drive, Taree NSW 2430", type:"Solar", lat:-31.8867924, lng:152.4683633},
+      {name:"Mark Hey", address:"10 Kanangra Drive, Taree NSW 2430", type:"Battery", lat:-31.900417, lng:152.465702},
+      {name:"Paula Elliott", address:"103 Cowper St, Taree NSW 2430", type:"Solar", lat:-31.8986467, lng:152.4738964},
+      {name:"George Harris", address:"14 Kurrajong Crescent, Taree NSW 2430", type:"Solar", lat:-31.8920344, lng:152.4809868},
+      {name:"Stephen Harrell", address:"13 Kurrajong Crescent, Taree NSW 2430", type:"Battery", lat:-31.8916667, lng:152.4834013},
+      {name:"Melissa Atkins", address:"1/77 Wingham Rd, Taree NSW 2430", type:"Battery", lat:-31.9014728, lng:152.4474137},
+      {name:"Noella Murphy", address:"40 Hickory Crescent, Taree NSW 2430", type:"Battery", lat:-31.8955589, lng:152.4568125},
+      {name:"Colleen Tuck", address:"16 Riverlinks Court, Taree NSW 2430", type:"Solar", lat:-31.9008728, lng:152.4423695},
+      {name:"Anthony Hudson", address:"31 Rosewood Crescent, Taree NSW 2430", type:"Solar", lat:-31.8951686, lng:152.4569561},
+      {name:"Brenton Hancock", address:"21 Stokes Circuit, Taree NSW 2430", type:"Battery", lat:-31.8972433, lng:152.4776171},
+      {name:"Belinda Matthews", address:"21 Talawong Drive, Taree NSW 2430", type:"Battery", lat:-31.8910096, lng:152.4655592},
+      {name:"Melanie Coggan", address:"10 Talawong Drive, Taree NSW 2430", type:"Battery", lat:-31.891681, lng:152.4663502},
+      {name:"Jennifer Crawford", address:"10 Patricia Ave, Taree NSW 2430", type:"Solar & Battery", lat:-31.898069, lng:152.4622583},
+      {name:"Diane Hardwick", address:"35 Henry Flett St, Taree NSW 2430", type:"Solar", lat:-31.9136965, lng:152.4455341},
+      {name:"Ren Rogers", address:"3 Henry Flett St, Taree NSW 2430", type:"Battery", lat:-31.915562, lng:152.4476953},
+      {name:"Carol Matheson", address:"33 Wells St, Taree NSW 2430", type:"Solar", lat:-31.8947595, lng:152.4745929},
+      {name:"Maria Digges", address:"26 Hooke St, Taree NSW 2430", type:"Battery", lat:-31.8960111, lng:152.4750788},
+      {name:"Beverly Stubbs", address:"33 Hooke St, Taree NSW 2430", type:"Solar", lat:-31.8960553, lng:152.4733447},
+      {name:"Dale Willcox", address:"5 Eric St, Taree NSW 2430", type:"Solar & Battery", lat:-31.9064896, lng:152.4541788},
+      {name:"Rodney Dannevig", address:"13 Jacaranda Ave, Taree NSW 2430", type:"HWHP", lat:-31.893674, lng:152.4831853},
+      {name:"Darren Dannevig", address:"13 Jacaranda Ave, Taree NSW 2430", type:"Battery", lat:-31.893674, lng:152.4831853},
+      {name:"Jennifer Eggleton", address:"12 Plummer St, Taree NSW 2430", type:"Battery", lat:-31.8977534, lng:152.4735029},
+      {name:"Peter Hile", address:"23 Wyoming Close, Taree NSW 2430", type:"HWHP", lat:-31.8999026, lng:152.4674345},
+      {name:"Beryl Ritchie", address:"8 Rosebank Ave, Taree NSW 2430", type:"Battery", lat:-31.8952582, lng:152.4695624},
+      {name:"Lynette Emerton", address:"32 McRae Ave, Taree NSW 2430", type:"Solar", lat:-31.900487, lng:152.4837788},
+      {name:"Kyle Miller", address:"6 Wentworth St, Taree NSW 2430", type:"Solar", lat:-31.8936386, lng:152.474902},
+      {name:"Matthew Hoadley", address:"18 Wentworth St, Taree NSW 2430", type:"Solar", lat:-31.8930499, lng:152.4757182},
+      {name:"Denise Brown", address:"32 Gunbar Rd, Taree NSW 2430", type:"Solar", lat:-31.8878494, lng:152.4659975},
+      {name:"Dineshwar Chand", address:"40 Gunbar Rd, Taree NSW 2430", type:"Solar", lat:-31.8872473, lng:152.4655779},
+      {name:"Fiona Kliendeinst", address:"7 Craiglea Close, Taree NSW 2430", type:"Solar", lat:-31.9154801, lng:152.4391762},
+      {name:"Glenn Beck", address:"6 Wynter St, Taree NSW 2430", type:"Solar & Battery", lat:-31.9063094, lng:152.4647491},
+      {name:"Sharon James", address:"16 Alonbar Crescent, Taree NSW 2430", type:"Solar", lat:-31.8875058, lng:152.4663796},
+      {name:"Michael Booth", address:"18 Marsden Tce, Taree NSW 2430", type:"Solar", lat:-31.9017993, lng:152.4442757},
+      {name:"Michelle West", address:"17 Nicoll Crescent, Taree NSW 2430", type:"Battery", lat:-31.9130204, lng:152.4479897},
+      {name:"Sharon Wiggers", address:"18 Illingari Circuit, Taree NSW 2430", type:"Battery", lat:-31.9129239, lng:152.4394732},
+      {name:"Geoffrey Shimmon", address:"11 McLaughlin Ave, Taree NSW 2430", type:"Battery", lat:-31.9051306, lng:152.4443375},
+      {name:"Kerri Avery", address:"137 Edinburgh Drive, Taree NSW 2430", type:"Battery", lat:-31.922812, lng:152.4347915},
+      {name:"Jennifer Maddy", address:"98 Cornwall St, Taree NSW 2430", type:"Battery", lat:-31.9080166, lng:152.455376},
+      {name:"Laurence White", address:"18 Ritchie Crescent, Taree NSW 2430", type:"Top-up & Battery", lat:-31.9044887, lng:152.4404783},
+      {name:"Robert Crossman", address:"8 Ritchie Crescent, Taree NSW 2430", type:"Solar", lat:-31.9051291, lng:152.4409362},
+      {name:"Roger Turner", address:"74 Ritchie Crescent, Taree NSW 2430", type:"Solar", lat:-31.902478, lng:152.4442801},
+      {name:"Sandra Mills", address:"18 Andrew Close, Taree NSW 2430", type:"Solar", lat:-31.9200144, lng:152.4363959},
+      {name:"Stewart Campbell", address:"20 Plover St, Taree NSW 2430", type:"Solar", lat:-31.8992238, lng:152.4789739},
+      {name:"Steven Parker", address:"1 Deb St, Taree NSW 2430", type:"Solar & Battery", lat:-31.9061937, lng:152.4489626},
+      {name:"Jordan McAlister", address:"20 Deb St, Taree NSW 2430", type:"Solar", lat:-31.9077847, lng:152.4473303},
+      {name:"Bruce McDonald", address:"22 Deb St, Taree NSW 2430", type:"Solar", lat:-31.907916, lng:152.4471787},
+      {name:"Beau McLean", address:"3 Coachwood Drive, Taree NSW 2430", type:"Solar", lat:-31.8969055, lng:152.471198},
+      {name:"June Wilkinson", address:"45 Bayview Crescent, Taree NSW 2430", type:"Solar", lat:-31.9075751, lng:152.4423998},
+      {name:"Anthony Wright", address:"33 Railway Parade, Taree NSW 2430", type:"Solar", lat:-31.9022093, lng:152.4732754},
+      {name:"Richard Sheldon", address:"12 Arthur Ave, Taree NSW 2430", type:"Battery", lat:-31.9191587, lng:152.4377637},
+      {name:"Robert Jordan", address:"3 Myall Ave, Taree NSW 2430", type:"Battery", lat:-31.8937682, lng:152.4610747},
+      {name:"Nathan Fuller", address:"6 Butea Drive, Taree NSW 2430", type:"Top-up & Battery", lat:-31.8929618, lng:152.4522541},
+      {name:"Jodie Newell", address:"4 Shaybisc Close, Taree NSW 2430", type:"Solar", lat:-31.8922412, lng:152.471041},
+      {name:"Scott Pereira", address:"75 Cowper St, Taree NSW 2430", type:"Battery", lat:-31.8981761, lng:152.4776133},
+      {name:"Ilija Bilbija", address:"27 Hope St, Red Head NSW 2430", type:"Top-up & Battery", lat:-32.0627967, lng:152.5399157}
+    ]
+  },
+  {
+    id: 8,
+    name: "Pampoolah / Mitchells Island / Oxley Island",
+    color: "#1abc9c",
+    customers: [
+      {name:"Roy Lewis", address:"17 Kaywana Close, Pampoolah NSW 2430", type:"Solar", lat:-31.9491006, lng:152.4991023},
+      {name:"Mary Andrews", address:"121 Malcolms Rd, Pampoolah NSW 2430", type:"Solar & Battery", lat:-31.9369236, lng:152.4939543},
+      {name:"Daniel Andrews", address:"121 Malcolms Rd, Pampoolah NSW 2430", type:"Solar & Battery", lat:-31.9369236, lng:152.4939543},
+      {name:"Jeffrey Collins", address:"21 Mullalone Place, Pampoolah NSW 2430", type:"Solar", lat:-31.9352085, lng:152.4970146},
+      {name:"Ryan Macey", address:"975 Manning Point Rd, Mitchells Island NSW 2430", type:"Solar", lat:-31.9121051, lng:152.5981254},
+      {name:"Dean Brame", address:"205 Pelican Bay Rd, Mitchells Island NSW 2430", type:"Solar", lat:-31.8857643, lng:152.6307154},
+      {name:"Diane Gibney", address:"99 Oxley Island Rd, Oxley Island NSW 2430", type:"Solar", lat:-31.9102279, lng:152.5677395}
+    ]
+  },
+  {
+    id: 9,
+    name: "Wallabi Point / Ghinni Ghinni",
+    color: "#e74c3c",
+    customers: [
+      {name:"Judith Scott & Katrina Bettington", address:"322 Saltwater Rd, Wallabi Point NSW 2430", type:"Solar", lat:-31.9925854, lng:152.5672492},
+      {name:"Judith Scott", address:"30 Ocean Drive, Wallabi Point NSW 2430", type:"Solar", lat:-31.9942805, lng:152.5706542},
+      {name:"Terrence Roulstone", address:"104 Moto Rd, Ghinni Ghinni NSW 2430", type:"Solar", lat:-31.8712241, lng:152.56179}
+    ]
+  },
+  {
+    id: 10,
+    name: "Old Bar / Black Head / Tallwoods / Red Head",
+    color: "#e67e22",
+    customers: [
+      {name:"Angela Hayden", address:"130 Old Bar Rd, Old Bar NSW 2430", type:"Solar", lat:-31.966777, lng:152.5734859},
+      {name:"Mongkol Rotwiboonchai", address:"42 Clerke St, Old Bar NSW 2430", type:"Solar & Battery", lat:-31.9731149, lng:152.5822091},
+      {name:"Robyn Ward", address:"10 Flagtail Ave, Old Bar NSW 2430", type:"Battery", lat:-31.9761213, lng:152.5717497},
+      {name:"Mark Ripley", address:"4 Ondaroo Crest, Old Bar NSW 2430", type:"Battery", lat:-31.9615926, lng:152.5818302},
+      {name:"Sandra Harland", address:"34 Kolinda Drive, Old Bar NSW 2430", type:"Battery", lat:-31.9711416, lng:152.5612599},
+      {name:"Anthony Johnson", address:"47 Gannet Crescent, Old Bar NSW 2430", type:"Battery", lat:-31.9574864, lng:152.5840851},
+      {name:"Diane Rule", address:"6 Kodi Close, Old Bar NSW 2430", type:"Battery", lat:-31.9710731, lng:152.580706},
+      {name:"Jennifer Smoothy", address:"45 Waterman St, Old Bar NSW 2430", type:"Solar & Battery", lat:-31.9647067, lng:152.5857297},
+      {name:"Wayne Philpott", address:"49 Waterman St, Old Bar NSW 2430", type:"Battery", lat:-31.9644365, lng:152.5858019},
+      {name:"Barry Hughes", address:"41 Smith St, Old Bar NSW 2430", type:"Solar", lat:-31.9710736, lng:152.5853119},
+      {name:"Phillip Koch", address:"21 Carrabeen Drive, Old Bar NSW 2430", type:"Solar", lat:-31.9583614, lng:152.5872993},
+      {name:"Thomas Davey", address:"5 Hillside Terrace, Black Head NSW 2430", type:"Solar & Battery", lat:-32.0678659, lng:152.5320234},
+      {name:"Gerlinde Sonter", address:"16 Surfview Ave, Black Head NSW 2430", type:"Solar", lat:-32.0714727, lng:152.5410702},
+      {name:"Roger Hill", address:"16 Hope St, Red Head NSW 2430", type:"Solar", lat:-32.0622444, lng:152.5397611},
+      {name:"Graham Walker", address:"73 Coastal View Drive, Tallwoods Village NSW 2430", type:"Solar", lat:-32.0537002, lng:152.5127559},
+      {name:"Beryl Kennedy", address:"19 Lorikeet Way, Tallwoods Village NSW 2430", type:"Solar", lat:-32.0565301, lng:152.5137089},
+      {name:"Anthony Richardson", address:"9 Lorikeet Way, Tallwoods Village NSW 2430", type:"Battery", lat:-32.0570985, lng:152.514812},
+      {name:"Douglas Feilen", address:"10 Hilltop Parkway, Tallwoods Village NSW 2430", type:"Solar", lat:-32.0568504, lng:152.5064087},
+      {name:"Allison McGuire", address:"34 Hilltop Parkway, Tallwoods Village NSW 2430", type:"Solar & Battery", lat:-32.0543344, lng:152.5053068},
+      {name:"Garry Myers", address:"87 Coastal View Drive, Tallwoods Village NSW 2430", type:"Solar & Battery", lat:-32.052333, lng:152.5115415},
+      {name:"Graham Rosenhern", address:"22 Emerald Drive, Diamond Reach NSW 2430", type:"Solar", lat:-32.045925, lng:152.5383787}
+    ]
+  },
+  {
+    id: 11,
+    name: "Hallidays Point / Koorainghat",
+    color: "#9b59b6",
+    customers: [
+      {name:"Jason Nicholson", address:"15 Woodlands Drive, Hallidays Point NSW 2430", type:"Solar & Battery", lat:-32.0745784, lng:152.4836164},
+      {name:"Vicki Hicks", address:"7 Heritage Close, Hallidays Point NSW 2430", type:"Solar", lat:-32.0693502, lng:152.4939118},
+      {name:"Francis Hicks", address:"7 Heritage Close, Hallidays Point NSW 2430", type:"Battery", lat:-32.0693502, lng:152.4939118},
+      {name:"Natalie Carrier", address:"17 Redhead Rd, Hallidays Point NSW 2430", type:"Top-up", lat:-32.0599468, lng:152.5434665},
+      {name:"David Clough", address:"387 Half Chain Rd, Koorainghat NSW 2430", type:"Solar", lat:-31.9751042, lng:152.5008701}
+    ]
+  },
+  {
+    id: 12,
+    name: "Failford / Smiths Lake / Coomba Park",
+    color: "#2ecc71",
+    customers: [
+      {name:"Dru Kenneth Chisholm", address:"249 Bullocky Way, Failford NSW 2430", type:"Solar", lat:-32.0730743, lng:152.4397549},
+      {name:"Trent Burston", address:"377 Macrae Place, Failford NSW 2430", type:"Solar", lat:-32.0894498, lng:152.4455313},
+      {name:"Margaret Wright", address:"16 Heather Close, Failford NSW 2430", type:"Solar & Battery", lat:-32.0870556, lng:152.4406143},
+      {name:"Leanne Skillen", address:"327 Highlands Drive, Failford NSW 2430", type:"Solar", lat:-32.0843704, lng:152.4405628},
+      {name:"John Hancock", address:"31 Patsys Flat Rd, Smiths Lake NSW 2428", type:"Solar", lat:-32.3804655, lng:152.5058116},
+      {name:"Raymond Howard", address:"7 First Ridge Rd, Smiths Lake NSW 2428", type:"Solar", lat:-32.3790545, lng:152.4949842},
+      {name:"Norman Lyons", address:"52 Paradise Drive, Smiths Lake NSW 2428", type:"Solar", lat:-32.3713215, lng:152.5052115},
+      {name:"Luke Ifield", address:"45 Patsys Flat Rd, Smiths Lake NSW 2428", type:"Solar", lat:-32.3794141, lng:152.5064609},
+      {name:"Robert Bollinger", address:"18 Phillip Rd, Smiths Lake NSW 2428", type:"Solar", lat:-32.3834641, lng:152.4990968},
+      {name:"Wayne McMillan", address:"21 Wallaroo St, Coomba Park NSW 2428", type:"Solar", lat:-32.243617, lng:152.4710119},
+      {name:"William Leonard", address:"14 Warralong St, Coomba Park NSW 2428", type:"Solar", lat:-32.2382172, lng:152.4744947}
+    ]
+  },
+  {
+    id: 13,
+    name: "Forster / Tuncurry / Green Point",
+    color: "#3498db",
+    customers: [
+      {name:"Sheradon Henderson", address:"15 Mills Parade, Tuncurry NSW 2428", type:"Solar", lat:-32.1724884, lng:152.487084},
+      {name:"Robert Ryan", address:"8 Commodore Place, Tuncurry NSW 2428", type:"Battery", lat:-32.1748692, lng:152.4891092},
+      {name:"John Bradford", address:"52 Grandis Drive, Tuncurry NSW 2428", type:"Battery", lat:-32.1576975, lng:152.4877866},
+      {name:"Christine Hall", address:"2 Fleeting Place, Tuncurry NSW 2428", type:"Battery", lat:-32.1534484, lng:152.4868804},
+      {name:"Suzette Maguire", address:"63 Manning St, Tuncurry NSW 2428", type:"Battery", lat:-32.1694531, lng:152.4983513},
+      {name:"Breton Lees", address:"8 Oasis Parade, Tuncurry NSW 2428", type:"Battery", lat:-32.1744623, lng:152.4881336},
+      {name:"Carol Gallard", address:"5 Wright Close, Tuncurry NSW 2428", type:"Solar", lat:-32.1737558, lng:152.4848288},
+      {name:"Joanne Barnett", address:"10 Bahama Place, Tuncurry NSW 2428", type:"Solar", lat:-32.1682189, lng:152.4844684},
+      {name:"Phillip Sciacca", address:"4 Bahama Place, Tuncurry NSW 2428", type:"Solar", lat:-32.1684865, lng:152.4850147},
+      {name:"Peter Kommer", address:"14 Colleena Place, Tuncurry NSW 2428", type:"Solar", lat:-32.162059, lng:152.4899257},
+      {name:"Lorenzo Amato", address:"17 Montego Place, Tuncurry NSW 2428", type:"Solar", lat:-32.1694279, lng:152.4825311},
+      {name:"Heath McGuire", address:"2 Cassandra Crescent, Tuncurry NSW 2428", type:"Solar", lat:-32.1665722, lng:152.4951779},
+      {name:"Lawrence Haydon", address:"13 Rennie Crescent, Tuncurry NSW 2428", type:"Solar", lat:-32.1695974, lng:152.4905522},
+      {name:"Ian Evans", address:"22 Correa Close, Tuncurry NSW 2428", type:"Top-up & Battery", lat:-32.1582974, lng:152.4897513},
+      {name:"Julie O\'Byrne", address:"9 Transom Court, Tuncurry NSW 2428", type:"Solar", lat:-32.1752731, lng:152.4889316},
+      {name:"Paul Smith", address:"51 Beach St, Tuncurry NSW 2428", type:"Solar & Battery", lat:-32.1710295, lng:152.5035139},
+      {name:"Christopher Edwards", address:"21 Tulloch Rd, Tuncurry NSW 2428", type:"Solar", lat:-32.1482594, lng:152.488064},
+      {name:"Neil Gray", address:"1/40 Nuwarra Circuit, Forster NSW 2428", type:"Solar", lat:-32.2015286, lng:152.5284098},
+      {name:"Grant Barrett", address:"24 Palmer St, Forster NSW 2428", type:"Battery", lat:-32.1836985, lng:152.5272704},
+      {name:"Matthew Wheeler", address:"7 Curlew Close, Forster NSW 2428", type:"Battery", lat:-32.1887042, lng:152.5190807},
+      {name:"Matthew Caldwell", address:"10 Boundary St, Forster NSW 2428", type:"Battery", lat:-32.1829455, lng:152.5290845},
+      {name:"Andrew Hillman", address:"15 King George Parade, Forster NSW 2428", type:"Battery", lat:-32.2159587, lng:152.5181151},
+      {name:"Donna Hall", address:"14 Middle St, Forster NSW 2428", type:"Solar & Battery", lat:-32.184593, lng:152.5154938},
+      {name:"Michael Simpson", address:"28 Hind Ave, Forster NSW 2428", type:"Solar & Battery", lat:-32.20464, lng:152.5228764},
+      {name:"Daniel Biancardi", address:"2 Nikau Place, Forster NSW 2428", type:"Solar", lat:-32.2007574, lng:152.5345166},
+      {name:"Jeffrey Russell", address:"5 Gleneon Drive, Forster NSW 2428", type:"Solar", lat:-32.2199592, lng:152.5297021},
+      {name:"Rowan and Lisa Lacey", address:"6 Hume St, Forster NSW 2428", type:"Solar", lat:-32.1948478, lng:152.5322317},
+      {name:"Adam Clarke", address:"6 Chusan Place, Forster NSW 2428", type:"Solar", lat:-32.2020562, lng:152.5321293},
+      {name:"Richard Gliddon", address:"2 Jonathan Place, Forster NSW 2428", type:"Solar & Battery", lat:-32.2077255, lng:152.5413523},
+      {name:"Grant Crabbe", address:"25 Gleeson Avenue, Forster NSW 2428", type:"Solar & Battery", lat:-32.1852726, lng:152.5328063},
+      {name:"Natasha Briggs", address:"38 Gleeson Ave, Forster NSW 2428", type:"Solar", lat:-32.1857509, lng:152.5330665},
+      {name:"Christopher Woridon", address:"4 Paruna Court, Forster NSW 2428", type:"Solar", lat:-32.2120279, lng:152.5326357},
+      {name:"Sandra Cairncross", address:"8 Murray Ave, Forster NSW 2428", type:"Solar", lat:-32.2133618, lng:152.5223495},
+      {name:"Michelle Woods", address:"21 Livistona Drive, Forster NSW 2428", type:"Solar", lat:-32.2030011, lng:152.5288798},
+      {name:"Stuart Smith", address:"42 Goldens Rd, Forster NSW 2428", type:"Solar & Battery", lat:-32.2049849, lng:152.5261393},
+      {name:"Brian Belic", address:"11 Caryota Place, Forster NSW 2428", type:"Solar & Battery", lat:-32.2049537, lng:152.5318007},
+      {name:"Troy Deundey", address:"14 Caryota Place, Forster NSW 2428", type:"Solar", lat:-32.2051109, lng:152.5314473},
+      {name:"Grant Mathews", address:"58 Karloo St, Forster NSW 2428", type:"Solar", lat:-32.2018708, lng:152.5339425},
+      {name:"Vicki Sanderson", address:"143 Kularoo Drive, Forster NSW 2428", type:"Solar", lat:-32.1980353, lng:152.5314208},
+      {name:"Garry Meyer", address:"2/145 Kularoo Drive, Forster NSW 2428", type:"Solar", lat:-32.1980776, lng:152.5317139},
+      {name:"Nerida Price", address:"10 Robert St, Forster NSW 2428", type:"Solar & Battery", lat:-32.1862223, lng:152.513453},
+      {name:"Irene Lines", address:"1/12 Bright St, Forster NSW 2428", type:"Solar", lat:-32.197729, lng:152.5148285},
+      {name:"Gregory Luscombe", address:"38 Strand St, Forster NSW 2428", type:"Solar", lat:-32.187636, lng:152.5246153},
+      {name:"Wayne Picknell", address:"27 Leguna Crescent, Forster NSW 2428", type:"Solar", lat:-32.1916384, lng:152.5248271},
+      {name:"David Stephenson", address:"17 Leguna Crescent, Forster NSW 2428", type:"Solar", lat:-32.1908652, lng:152.5244383},
+      {name:"Leonie Rudd", address:"15 Likely St, Forster NSW 2428", type:"Solar", lat:-32.1915671, lng:152.5232484},
+      {name:"Christina Whitbread", address:"14 Cocos Crescent, Forster NSW 2428", type:"Solar", lat:-32.2008801, lng:152.5339552},
+      {name:"Kenneth Maytom", address:"12 Bangalow Place, Forster NSW 2428", type:"Top-up & Battery", lat:-32.1993313, lng:152.5341031},
+      {name:"Christopher Blomgren", address:"3 Minnibah Circuit, Forster NSW 2428", type:"Solar", lat:-32.1962001, lng:152.5331493},
+      {name:"Kate Mutch", address:"24 Fairway Crescent, Forster NSW 2428", type:"Solar", lat:-32.1860357, lng:152.5267386},
+      {name:"Jenyce Fernando", address:"93 Glider Ave, Darawank NSW 2428", type:"Solar & Battery", lat:-32.09257, lng:152.4742814},
+      {name:"Belinda Clancy", address:"9 Lucas Ave, Green Point NSW 2428", type:"Solar", lat:-32.2487975, lng:152.5153452},
+      {name:"Cheryl Brophy", address:"157 Green Point Drive, Green Point NSW 2428", type:"Solar", lat:-32.2516546, lng:152.5235209},
+      {name:"Jane Adams", address:"86 Green Point Drive, Green Point NSW 2428", type:"Solar", lat:-32.2510377, lng:152.5165319}
+    ]
+  },
+  {
+    id: 14,
+    name: "Boomerang Beach / Blueys Beach",
+    color: "#00bcd4",
+    customers: [
+      {name:"Paul Teys", address:"9 Coast Ave, Boomerang Beach NSW 2428", type:"Battery", lat:-32.3370212, lng:152.5433938},
+      {name:"Chris Humphries", address:"44 Red Gum Rd, Boomerang Beach NSW 2428", type:"Solar", lat:-32.3442844, lng:152.5369252},
+      {name:"Mark O\'Neill", address:"32 Belbourie Crescent, Boomerang Beach NSW 2428", type:"Solar", lat:-32.3437608, lng:152.5377183},
+      {name:"Kirk Owers", address:"1/10 Harrow Drive, Boomerang Beach NSW 2428", type:"Solar", lat:-32.3370334, lng:152.542902},
+      {name:"Katrina Read", address:"183 Boomerang Drive, Blueys Beach NSW 2428", type:"Battery", lat:-32.3479129, lng:152.5373283}
+    ]
+  },
+];
+
+// ─── HELPERS ──────────────────────────────────
+function typeColor(t) {
+  if (!t) return '#888';
+  const s = t.toLowerCase();
+  if (s.includes('solar') && s.includes('battery')) return '#1a6db5';
+  if (s.includes('battery') || s.includes('top-up')) return '#2a9e6e';
+  if (s.includes('solar')) return '#e8940a';
+  if (s.includes('hwhp') || s.includes('hvac')) return '#8b44b8';
+  return '#888';
+}
+
+// ─── JSONBIN CLOUD SYNC ────────────────────────
+const JSONBIN_KEY = '$2a$10$KzsfKz96CWS5iZib4zFP5u8oLPOcW75ukh7oWU3E9JiNoaYByvry2';
+const JSONBIN_BIN_KEY = 'solar_route_bin_id';
+let BIN_ID = localStorage.getItem(JSONBIN_BIN_KEY) || null;
+let visited = {};
+let syncTimeout = null;
+let lastSyncEtag = null;
+
+function visitKey(c) { return c.name + '||' + c.address; }
+function isVisited(c) { return !!visited[visitKey(c)]; }
+
+function setSyncStatus(status, msg) {
+  const el = document.getElementById('syncStatus');
+  if (!el) return;
+  const colors = { ok:'#2a9e6e', syncing:'#e8940a', error:'#e74c3c', offline:'#888' };
+  el.style.color = colors[status] || '#888';
+  el.textContent = msg;
+}
+
+async function ensureBin() {
+  if (BIN_ID) return true;
+  try {
+    setSyncStatus('syncing', '⟳ Creating sync…');
+    const res = await fetch('https://api.jsonbin.io/v3/b', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Master-Key': JSONBIN_KEY,
+        'X-Bin-Name': 'solar-route-visited',
+        'X-Bin-Private': 'false'
+      },
+      body: JSON.stringify({ visited: {} })
+    });
+    const data = await res.json();
+    BIN_ID = data.metadata.id;
+    localStorage.setItem(JSONBIN_BIN_KEY, BIN_ID);
+    setSyncStatus('ok', '✓ Synced');
+    return true;
+  } catch(e) {
+    setSyncStatus('error', '✗ Sync failed');
+    return false;
+  }
+}
+
+async function loadFromCloud() {
+  if (!BIN_ID) { await ensureBin(); return; }
+  try {
+    const res = await fetch(`https://api.jsonbin.io/v3/b/${BIN_ID}/latest`, {
+      headers: { 'X-Master-Key': JSONBIN_KEY }
+    });
+    if (!res.ok) throw new Error('fetch failed');
+    const etag = res.headers.get('X-Bin-Meta-Version') || res.headers.get('ETag');
+    const data = await res.json();
+    const newVisited = data.record?.visited || {};
+    // Only re-render if data changed
+    if (JSON.stringify(newVisited) !== JSON.stringify(visited)) {
+      visited = newVisited;
+      refreshAllUI();
+    }
+    lastSyncEtag = etag;
+    setSyncStatus('ok', '✓ Synced');
+  } catch(e) {
+    setSyncStatus('offline', '⚠ Offline');
+  }
+}
+
+async function saveToCloud() {
+  if (!BIN_ID) { const ok = await ensureBin(); if (!ok) return; }
+  try {
+    setSyncStatus('syncing', '⟳ Saving…');
+    await fetch(`https://api.jsonbin.io/v3/b/${BIN_ID}`, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Master-Key': JSONBIN_KEY
+      },
+      body: JSON.stringify({ visited })
+    });
+    setSyncStatus('ok', '✓ Synced');
+  } catch(e) {
+    setSyncStatus('error', '✗ Save failed');
+  }
+}
+
+function saveVisited() {
+  // Debounce: wait 600ms after last change before saving
+  clearTimeout(syncTimeout);
+  syncTimeout = setTimeout(saveToCloud, 600);
+}
+
+function toggleVisited(c) {
+  const k = visitKey(c);
+  if (visited[k]) delete visited[k]; else visited[k] = Date.now();
+  saveVisited();
+}
+
+function refreshAllUI() {
+  // Refresh all markers
+  zones.forEach(zone => zone.customers.forEach(c => refreshMarker(c)));
+  // Refresh sidebar items
+  zones.forEach(zone => {
+    const visibleCustomers = zone.customers.filter(c => activeZones.has(zone.id));
+    updateZoneProgress(zone, zone.customers);
+  });
+  // Refresh all customer-item visited states
+  if (filteredData.length) {
+    filteredData.forEach((c, idx) => {
+      const item = document.getElementById(`stop-${idx}`);
+      if (item) item.classList.toggle('visited', isVisited(c));
+    });
+  }
+  updateProgress();
+  // Refresh overlay button if open
+  if (activeCustomer !== null && filteredData[activeCustomer]) {
+    updateOverlayCheckBtn(filteredData[activeCustomer]);
+  }
+}
+
+// Poll for changes every 15 seconds
+setInterval(loadFromCloud, 15000);
+
+// ─── LEAFLET MAP SETUP ─────────────────────────
+const leafletMap = L.map('leaflet-map', { zoomControl: true }).setView([-31.97, 152.47], 10);
+
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+  attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
+  maxZoom: 19
+}).addTo(leafletMap);
+
+// Store markers keyed by visitKey
+const markerMap = {};
+
+function makeIcon(color, isVisited) {
+  const bg = isVisited ? '#aaa' : color;
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="32" viewBox="0 0 24 32">
+    <path d="M12 0C5.37 0 0 5.37 0 12c0 9 12 20 12 20S24 21 24 12C24 5.37 18.63 0 12 0z" fill="${bg}" stroke="#fff" stroke-width="1.5"/>
+    <circle cx="12" cy="12" r="5" fill="white" fill-opacity="0.85"/>
+    ${isVisited ? '<text x="12" y="16" text-anchor="middle" font-size="9" font-weight="bold" fill="'+bg+'">✓</text>' : ''}
+  </svg>`;
+  return L.divIcon({
+    html: svg,
+    className: '',
+    iconSize: [24, 32],
+    iconAnchor: [12, 32],
+    popupAnchor: [0, -32]
+  });
+}
+
+function addAllMarkers() {
+  zones.forEach(zone => {
+    zone.customers.forEach(c => {
+      if (!c.lat || !c.lng) return;
+      const key = visitKey(c);
+      const marker = L.marker([c.lat, c.lng], { icon: makeIcon(typeColor(c.type), isVisited(c)) })
+        .addTo(leafletMap);
+      marker.bindTooltip(`<b>${c.name}</b><br><small>${c.address}</small><br><small style="color:${typeColor(c.type)}">${c.type}</small>`, {
+        direction: 'top', offset: [0, -28], className: 'leaflet-tooltip-custom'
+      });
+      marker.on('click', () => {
+        // Find this customer in filteredData
+        const idx = filteredData.findIndex(fc => visitKey(fc) === key);
+        if (idx !== -1) selectCustomer(idx);
+      });
+      markerMap[key] = marker;
+    });
+  });
+}
+
+function refreshMarker(c) {
+  const key = visitKey(c);
+  const marker = markerMap[key];
+  if (marker) marker.setIcon(makeIcon(typeColor(c.type), isVisited(c)));
+}
+
+function flyToCustomer(c) {
+  leafletMap.flyTo([c.lat, c.lng], 16, { duration: 0.8 });
+}
+
+// ─── STATE ─────────────────────────────────────
+let activeCustomer = null;
+let stopCounter = 0;
+let filteredData = [];
+
+// ─── PROGRESS BAR ──────────────────────────────
+function updateProgress() {
+  const total = filteredData.length;
+  const done = filteredData.filter(c => isVisited(c)).length;
+  const pct = total > 0 ? Math.round(done / total * 100) : 0;
+  document.getElementById('progressLabel').textContent = `${done} / ${total} visited`;
+  document.getElementById('progressFill').style.width = pct + '%';
+  document.getElementById('totalBadge').textContent = `${total - done} remaining`;
+}
+
+// ─── BUILD SIDEBAR ─────────────────────────────
+function buildSidebar(search='', typeF='') {
+  const container = document.getElementById('sidebarInner');
+  container.innerHTML = '';
+  stopCounter = 0;
+  filteredData = [];
+  let totalShown = 0;
+
+  zones.forEach(zone => {
+    // Skip zones not in the active set
+    if (activeZones.size > 0 && !activeZones.has(zone.id)) return;
+
+    const customers = zone.customers.filter(c => {
+      const ms = !search || c.name.toLowerCase().includes(search) || c.address.toLowerCase().includes(search);
+      const mt = !typeF || c.type.toLowerCase().includes(typeF);
+      return ms && mt;
+    });
+    if (customers.length === 0) return;
+
+    totalShown += customers.length;
+    const zoneDone = customers.filter(c => isVisited(c)).length;
+    const zonePct = Math.round(zoneDone / customers.length * 100);
+
+    const zh = document.createElement('div');
+    zh.className = 'zone-header';
+    zh.id = `zone-hdr-${zone.id}`;
+    zh.innerHTML = `
+      <span class="zone-num">${String(zone.id).padStart(2,'0')}</span>
+      <span class="zone-name" style="border-left:3px solid ${zone.color};padding-left:8px">${zone.name}</span>
+      <span class="zone-done-count" id="zdone-${zone.id}">${zoneDone > 0 ? zoneDone+'/'+customers.length : ''}</span>
+      <span class="zone-count">${customers.length}</span>
+      <span class="zone-chevron">▼</span>
+    `;
+
+    const zoneProgress = document.createElement('div');
+    zoneProgress.className = 'zone-progress';
+    zoneProgress.innerHTML = `<div class="zone-progress-bar" id="zpbar-${zone.id}" style="width:${zonePct}%"></div>`;
+
+    const zoneBody = document.createElement('div');
+    zoneBody.className = 'zone-body';
+
+    zh.onclick = (e) => {
+      if (e.target.closest('.tick-btn')) return;
+      // Fly map to zone centre
+      const lats = customers.map(c=>c.lat), lngs = customers.map(c=>c.lng);
+      const bounds = L.latLngBounds(customers.map(c=>[c.lat,c.lng]));
+      leafletMap.flyToBounds(bounds, { padding: [40,40], maxZoom: 14, duration: 0.7 });
+      const collapsed = zh.classList.toggle('collapsed');
+      zoneBody.style.display = collapsed ? 'none' : '';
+    };
+
+    container.appendChild(zh);
+    container.appendChild(zoneProgress);
+
+    customers.forEach(c => {
+      stopCounter++;
+      const globalIdx = filteredData.length;
+      filteredData.push(c);
+      const done = isVisited(c);
+
+      const item = document.createElement('div');
+      item.className = 'customer-item' + (done ? ' visited' : '');
+      item.id = `stop-${globalIdx}`;
+      item.innerHTML = `
+        <span class="stop-num">${stopCounter}</span>
+        <div class="type-pip" style="background:${typeColor(c.type)}"></div>
+        <div style="flex:1;min-width:0">
+          <div class="c-name">${c.name}</div>
+          <div class="c-addr">${c.address}</div>
+          <div class="c-type" style="color:${typeColor(c.type)}">${c.type}</div>
+        </div>
+        <button class="tick-btn" title="${done ? 'Mark as unvisited' : 'Mark as visited'}">✓</button>
+      `;
+
+      item.addEventListener('click', (e) => {
+        if (e.target.closest('.tick-btn')) return;
+        selectCustomer(globalIdx);
+      });
+
+      item.querySelector('.tick-btn').addEventListener('click', (e) => {
+        e.stopPropagation();
+        toggleVisited(c);
+        item.classList.toggle('visited', isVisited(c));
+        refreshMarker(c);
+        updateZoneProgress(zone, customers);
+        updateProgress();
+        if (activeCustomer === globalIdx) updateOverlayCheckBtn(c);
+      });
+
+      zoneBody.appendChild(item);
+    });
+
+    container.appendChild(zoneBody);
+  });
+
+  document.getElementById('countBadge').textContent = totalShown + ' customers shown';
+  updateProgress();
+}
+
+function updateZoneProgress(zone, customers) {
+  const done = customers.filter(c => isVisited(c)).length;
+  const pct = Math.round(done / customers.length * 100);
+  const bar = document.getElementById(`zpbar-${zone.id}`);
+  const lbl = document.getElementById(`zdone-${zone.id}`);
+  if (bar) bar.style.width = pct + '%';
+  if (lbl) lbl.textContent = done > 0 ? done+'/'+customers.length : '';
+}
+
+function updateOverlayCheckBtn(c) {
+  const btn = document.getElementById('ovCheckBtn');
+  if (!btn) return;
+  const done = isVisited(c);
+  btn.textContent = done ? '✓ Visited — Click to Undo' : '✓ Mark as Visited';
+  btn.classList.toggle('done', done);
+}
+
+function selectCustomer(idx) {
+  document.querySelectorAll('.customer-item.active').forEach(el => el.classList.remove('active'));
+  const item = document.getElementById(`stop-${idx}`);
+  if (item) {
+    item.classList.add('active');
+    item.scrollIntoView({ behavior:'smooth', block:'nearest' });
+  }
+
+  activeCustomer = idx;
+  const c = filteredData[idx];
+
+  // Fly map to this pin
+  flyToCustomer(c);
+
+  // Open marker tooltip briefly
+  const key = visitKey(c);
+  const marker = markerMap[key];
+  if (marker) {
+    marker.openTooltip();
+    setTimeout(() => marker.closeTooltip(), 3000);
+  }
+
+  // Update overlay panel
+  const ov = document.getElementById('mapOverlay');
+  ov.style.display = 'block';
+  document.getElementById('ovName').textContent = c.name;
+  document.getElementById('ovAddr').textContent = c.address;
+  document.getElementById('ovType').textContent = c.type;
+  document.getElementById('ovType').style.color = typeColor(c.type);
+  updateOverlayCheckBtn(c);
+}
+
+function toggleVisitedFromOverlay() {
+  if (activeCustomer === null) return;
+  const c = filteredData[activeCustomer];
+  toggleVisited(c);
+  const item = document.getElementById(`stop-${activeCustomer}`);
+  if (item) item.classList.toggle('visited', isVisited(c));
+  refreshMarker(c);
+  updateOverlayCheckBtn(c);
+  updateProgress();
+  zones.forEach(zone => {
+    if (zone.customers.some(zc => visitKey(zc) === visitKey(c))) {
+      updateZoneProgress(zone, zone.customers);
+    }
+  });
+}
+
+function navigateStop(dir) {
+  if (activeCustomer === null) return;
+  const next = activeCustomer + dir;
+  if (next >= 0 && next < filteredData.length) selectCustomer(next);
+}
+
+function openInMaps() {
+  if (activeCustomer === null) return;
+  const c = filteredData[activeCustomer];
+  // Detects iOS/Android for Apple/Google Maps
+  const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
+  const url = isIOS
+    ? `maps://maps.apple.com/?q=${encodeURIComponent(c.address)}`
+    : `https://maps.google.com/?q=${encodeURIComponent(c.address)}`;
+  window.open(url, '_blank');
+}
+
+function openFullRoute() {
+  const allStops = filteredData.filter(c => !isVisited(c)).slice(0, 10);
+  if (allStops.length < 2) { alert('Need at least 2 unvisited stops'); return; }
+  const origin = encodeURIComponent(allStops[0].address);
+  const dest = encodeURIComponent(allStops[allStops.length-1].address);
+  const waypoints = allStops.slice(1,-1).map(c => encodeURIComponent(c.address)).join('|');
+  const url = `https://www.google.com/maps/dir/?api=1&origin=${origin}&destination=${dest}&waypoints=${waypoints}&travelmode=driving`;
+  window.open(url, '_blank');
+}
+
+function resetAll() {
+  if (!confirm('Reset ALL visited checkmarks for everyone?')) return;
+  visited = {};
+  saveToCloud();
+  zones.forEach(zone => zone.customers.forEach(c => refreshMarker(c)));
+  buildSidebar(
+    document.getElementById('searchInput').value.toLowerCase(),
+    document.getElementById('typeFilter').value.toLowerCase()
+  );
+  document.getElementById('mapOverlay').style.display = 'none';
+  activeCustomer = null;
+}
+
+function filterAll() {
+  const search = document.getElementById('searchInput').value.toLowerCase();
+  const typeF = document.getElementById('typeFilter').value.toLowerCase();
+  buildSidebar(search, typeF);
+}
+
+// ─── ZONE DROPDOWN ─────────────────────────────
+let activeZones = new Set(); // empty = all shown
+
+function buildZoneDropdown() {
+  const list = document.getElementById('zoneCheckList');
+  list.innerHTML = '';
+  zones.forEach(zone => {
+    activeZones.add(zone.id); // start with all on
+    const item = document.createElement('div');
+    item.className = 'zone-dd-item';
+    item.id = `zdd-${zone.id}`;
+    item.innerHTML = `
+      <div class="zone-dd-check checked" id="zdd-chk-${zone.id}">✓</div>
+      <div class="zone-dd-swatch" style="background:${zone.color}"></div>
+      <span class="zone-dd-label">${zone.name}</span>
+      <span class="zone-dd-count">${zone.customers.length}</span>
+    `;
+    item.addEventListener('click', () => toggleZone(zone.id));
+    list.appendChild(item);
+  });
+}
+
+function toggleZone(zoneId) {
+  if (activeZones.has(zoneId)) {
+    activeZones.delete(zoneId);
+  } else {
+    activeZones.add(zoneId);
+  }
+  const chk = document.getElementById(`zdd-chk-${zoneId}`);
+  if (chk) {
+    chk.classList.toggle('checked', activeZones.has(zoneId));
+    chk.textContent = activeZones.has(zoneId) ? '✓' : '';
+  }
+  updateDropdownLabel();
+  applyZoneVisibility();
+  filterAll();
+}
+
+function selectAllZones() {
+  zones.forEach(z => {
+    activeZones.add(z.id);
+    const chk = document.getElementById(`zdd-chk-${z.id}`);
+    if (chk) { chk.classList.add('checked'); chk.textContent = '✓'; }
+  });
+  updateDropdownLabel();
+  applyZoneVisibility();
+  filterAll();
+}
+
+function selectNoZones() {
+  zones.forEach(z => {
+    activeZones.delete(z.id);
+    const chk = document.getElementById(`zdd-chk-${z.id}`);
+    if (chk) { chk.classList.remove('checked'); chk.textContent = ''; }
+  });
+  updateDropdownLabel();
+  applyZoneVisibility();
+  filterAll();
+}
+
+function updateDropdownLabel() {
+  const btn = document.getElementById('zoneDropdownBtn');
+  if (activeZones.size === zones.length) {
+    btn.textContent = 'All Zones';
+  } else if (activeZones.size === 0) {
+    btn.textContent = 'No Zones';
+  } else if (activeZones.size === 1) {
+    const z = zones.find(z => activeZones.has(z.id));
+    btn.textContent = z ? z.name : '1 Zone';
+  } else {
+    btn.textContent = `${activeZones.size} Zones`;
+  }
+  // Re-add the arrow (btn.textContent wipes ::after pseudo so we use a span trick)
+  btn.setAttribute('data-label', btn.textContent);
+}
+
+function applyZoneVisibility() {
+  // Show/hide markers for each zone
+  zones.forEach(zone => {
+    const visible = activeZones.has(zone.id);
+    zone.customers.forEach(c => {
+      const key = visitKey(c);
+      const marker = markerMap[key];
+      if (!marker) return;
+      if (visible) {
+        if (!leafletMap.hasLayer(marker)) marker.addTo(leafletMap);
+      } else {
+        if (leafletMap.hasLayer(marker)) leafletMap.removeLayer(marker);
+      }
+    });
+  });
+}
+
+function toggleZoneDropdown() {
+  const panel = document.getElementById('zoneDropdownPanel');
+  const btn = document.getElementById('zoneDropdownBtn');
+  const open = panel.classList.toggle('open');
+  btn.classList.toggle('open', open);
+}
+
+// Close dropdown when clicking outside
+document.addEventListener('click', (e) => {
+  const wrap = document.getElementById('zoneDropdownWrap');
+  if (wrap && !wrap.contains(e.target)) {
+    document.getElementById('zoneDropdownPanel').classList.remove('open');
+    document.getElementById('zoneDropdownBtn').classList.remove('open');
+  }
+});
+
+// ─── INIT ──────────────────────────────────────
+addAllMarkers();
+buildZoneDropdown();
+buildSidebar();
+// Load cloud state on startup
+loadFromCloud();
+</script>
+</body>
+</html>
